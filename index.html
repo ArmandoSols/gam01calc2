@@ -186,7 +186,7 @@ header{background:var(--ink);color:var(--paper);padding:1.1rem 2rem;display:flex
 <script>
 const CLUES=[{"id":1,"word":"TANGENTE","clue":"Función trigonométrica que se utiliza como cambio de variable en la sustitución trigonométrica cuando el integrando contiene una expresión de la forma a² + x²."},{"id":2,"word":"REGLADEBARROW","clue":"Nombre del teorema fundamental del cálculo para calcular integrales definidas donde se evalúa la antiderivada en los límites de integración."},{"id":3,"word":"COSENO","clue":"Función que usualmente se utiliza como cambio de variable cuando se integra el producto de una potencia impar de seno con una potencia par de coseno."},{"id":4,"word":"SENO","clue":"Función que usualmente se utiliza como cambio de variable cuando se integra el producto de una potencia par de seno con una potencia impar de coseno."},{"id":5,"word":"AREA","clue":"Interpretación geométrica del cálculo que determina la integral definida de una función positiva cuyos límites de integración corresponden a los valores del eje x que generan rectas verticales de acotación."},{"id":6,"word":"PORPARTES","clue":"Método de integración donde es posible descomponer la integral de un producto de funciones en una expresión más simple, donde se debe identificar la derivada de uno de los factores y la integral del otro factor."},{"id":7,"word":"LINEALES","clue":"Nombre de los factores del denominador de una fracción que precisan de una descomposición por factores parciales cuyos numeradores son constantes."},{"id":8,"word":"DIVISION","clue":"Primer procedimiento que se verifica cuando se calcula la integral de una fracción algebraica cuyo numerador y denominador corresponde a polinomios."},{"id":9,"word":"IDENTIDADES","clue":"Procedimiento que se aplica si se resuelve una integral compuesta por productos de potencias pares de seno y coseno."},{"id":10,"word":"RAZONESTRIGONOMETRICAS","clue":"Se utilizan para completar el proceso de la integración por sustitución trigonométrica, después del cambio de variable."},{"id":11,"word":"ILATE","clue":"Siglas que se pueden seguir para ubicar la prioridad de la elección de la función diferenciable en la Integración por Partes."},{"id":12,"word":"DEFINIDA","clue":"Tipo de integral que se define con límites de integración que son numéricos."},{"id":13,"word":"CICLICAS","clue":"Tipo de integrales donde la integral original aparece nuevamente en el desarrollo de la integración."},{"id":14,"word":"RACIONALES","clue":"Tipo de funciones en las que en su integral se debe aplicar división de polinomios y, en algunas ocasiones, completación de cuadrados."},{"id":15,"word":"SUSTITUCION","clue":"Tipo de integración donde se reemplaza una variable para simplificar la integración."}];
 const PTS=10;
-const SCRIPT_URL="https://script.google.com/macros/s/AKfycbxwCi7_NjFSzwdfo3m25TW9evDYK5AZC6z_65R3y_iAHK8LnknrEoXz_uV0BgobDhJNjA/exec";
+const SCRIPT_URL="https://script.google.com/macros/s/AKfycbzcZFJKv-ktLsGxPnNVV78Lc2eecZJ_fo5_uLwAnku7qde_X7wXmzUb-PkzdLjqzht-Lg/exec";
 const CURSO="Cálculo 2";
 const CURSO_CORTO = {
   'Introducción al Cálculo': 'Intro',
@@ -207,9 +207,10 @@ function startTimer(){
   document.getElementById('timer-box').style.display = 'flex';
   updateTimerDisplay();
   timerInterval = setInterval(()=>{
-    secondsLeft--;
+    // Always calculate from real wall-clock time so salir/volver doesn't cheat
+    const elapsed = Math.floor((Date.now() - studentData.startedAt) / 1000);
+    secondsLeft = Math.max(0, TIME_LIMIT - elapsed);
     updateTimerDisplay();
-    // Save state every 10 seconds to keep savedAt current
     if(secondsLeft % 10 === 0) saveState();
     if(secondsLeft <= 0){
       clearInterval(timerInterval);
@@ -240,6 +241,36 @@ const DIRS=[[0,1],[1,0]];
 const ALPHA='ABCDEFGHIJKLMNOPRSTUVWXYZ';
 const GSIZE=20;
 let grid=[],placedWords=[];
+
+function buildGridFromWords(words, rng){
+  const g=Array.from({length:GSIZE},()=>Array(GSIZE).fill(''));
+  const placed=[];
+  const sorted=[...new Set(words)].sort((a,b)=>b.length-a.length);
+  for(const word of sorted){
+    let ok=false;
+    for(let t=0;t<600&&!ok;t++){
+      const[dr,dc]=DIRS[Math.floor(rng()*DIRS.length)];
+      const r=Math.floor(rng()*GSIZE),c=Math.floor(rng()*GSIZE);
+      const len=word.length;
+      const er=r+dr*(len-1),ec=c+dc*(len-1);
+      if(er<0||er>=GSIZE||ec<0||ec>=GSIZE)continue;
+      let can=true;
+      for(let i=0;i<len;i++){const nr=r+dr*i,nc=c+dc*i;if(g[nr][nc]!==''&&g[nr][nc]!==word[i]){can=false;break}}
+      if(!can)continue;
+      const br=r-dr,bc=c-dc;
+      if(br>=0&&br<GSIZE&&bc>=0&&bc<GSIZE&&g[br][bc]!==''){can=false;}
+      if(!can)continue;
+      const ar=er+dr,ac=ec+dc;
+      if(ar>=0&&ar<GSIZE&&ac>=0&&ac<GSIZE&&g[ar][ac]!==''){can=false;}
+      if(!can)continue;
+      const cells=[];
+      for(let i=0;i<len;i++){const nr=r+dr*i,nc=c+dc*i;g[nr][nc]=word[i];cells.push([nr,nc])}
+      placed.push({word,cells});ok=true;
+    }
+  }
+  for(let r=0;r<GSIZE;r++)for(let c=0;c<GSIZE;c++)if(g[r][c]==='')g[r][c]=ALPHA[Math.floor(rng()*ALPHA.length)];
+  return{g,placed};
+}
 
 function buildGrid(rng){
   const g=Array.from({length:GSIZE},()=>Array(GSIZE).fill(''));
@@ -315,8 +346,11 @@ function goHome(){show('screen-register')}
 
 function saveState(){
   if(!studentData.nombre) return;
-  const state={studentData, activeClues, answers, submitted, secondsLeft, savedAt: Date.now(), sessionCount: (studentData.sessionCount||1)};
-  try{ localStorage.setItem('gamif_'+CURSO+'_'+studentData.nombre, JSON.stringify(state)); }catch(e){}
+  const key = 'gamif_'+CURSO+'_'+studentData.nombre;
+  try{
+    localStorage.setItem(key, JSON.stringify({studentData, activeClues, answers, submitted}));
+    console.log('Saved state, sessionCount=', studentData.sessionCount, 'key=', key);
+  }catch(e){ console.error('saveState error:', e); }
 }
 
 function clearState(){
@@ -333,64 +367,110 @@ function startActivity(){
     document.getElementById('reg-err').style.display='block';
     document.getElementById('reg-err').textContent='⚠ Por favor completa todos los campos.';return;}
   document.getElementById('reg-err').style.display='none';
+
   const nombreCompleto = apellidos + ', ' + nombre;
 
-  // Check for saved state
-  let saved = null;
-  try{ const s = localStorage.getItem('gamif_'+CURSO+'_'+nombreCompleto); if(s) saved = JSON.parse(s); }catch(e){}
+  // Build grid + clues for this student (always same seed = same questions)
+  const seed = hashStr(nombreCompleto+dia+horario+CURSO);
+  studentData = {
+    nombre: nombreCompleto, dia, horario, curso: CURSO,
+    startedAt: Date.now(), sessionCount: 1, seed
+  };
+  answers={};submitted=false;
+  secondsLeft = TIME_LIMIT;
 
-  if(saved && !saved.submitted){
-    studentData = saved.studentData;
-    studentData.sessionCount = (saved.sessionCount||1) + 1;
-    activeClues = saved.activeClues;
-    answers     = saved.answers;
-    submitted   = saved.submitted;
-    const elapsed = saved.savedAt ? Math.floor((Date.now() - saved.savedAt) / 1000) : 0;
-    secondsLeft = Math.max(0, saved.secondsLeft - elapsed);
-    // Keep original startedAt so total time is accurate
-    if(!studentData.startedAt) studentData.startedAt = Date.now() - ((TIME_LIMIT - saved.secondsLeft) * 1000);
-  } else {
-    studentData={nombre:nombreCompleto, dia, horario, curso:CURSO};
-    studentData.startedAt = Date.now();
-    answers={};submitted=false;
-    secondsLeft = TIME_LIMIT;
+  const rng=makeRng(seed);
+  const shuffledAll = seededShuffle([...CLUES], rng);
+  const seenWords = new Set();
+  const pickedClues = [];
+  for(const c of shuffledAll){
+    if(seenWords.has(c.word)) continue;
+    seenWords.add(c.word);
+    pickedClues.push(c);
+    if(pickedClues.length >= WORDS_PER_STUDENT) break;
+  }
+  activeClues = seededShuffle(pickedClues, rng).map((c,i)=>({...c, displayId:i+1}));
+  activeClues.forEach(c=>{answers[c.displayId]={attempts:[],correct:false,attemptsUsed:0,word:c.word,nearlyCorrect:false};});
+  const{g,placed}=buildGrid(rng);
+  grid=g;placedWords=placed;
 
-    const seed=hashStr(nombre.toLowerCase()+dia+horario+String(Math.floor(Date.now()/60000)));
-    const rng=makeRng(seed);
-    const shuffledAll = seededShuffle([...CLUES], rng);
-    const seenWords = new Set();
-    const pickedClues = [];
-    for(const c of shuffledAll){
-      if(seenWords.has(c.word)) continue;
-      seenWords.add(c.word);
-      pickedClues.push(c);
-      if(pickedClues.length >= WORDS_PER_STUDENT) break;
+  // Show loading state
+  const btn = document.getElementById('btn-start');
+  btn.disabled=true;
+  btn.textContent='Cargando…';
+
+  // Query Sheets to restore previous progress (works on any browser)
+  const restoreAndLaunch = (answered) => {
+    if(answered && Object.keys(answered).length > 0){
+      // Match P1,P2,... to activeClues by position
+      activeClues.forEach((item, idx) => {
+        const key = 'P'+(idx+1);
+        const cell = answered[key];
+        if(!cell || cell==='—') return;
+        const state = answers[item.displayId];
+        if(cell.includes('✓')){
+          // Correct answer
+          const attempt = cell.replace(' ✓','').trim();
+          state.correct=true;
+          state.attemptsUsed=1;
+          state.attempts=[attempt];
+        } else if(cell.includes('✗')){
+          // Failed all attempts
+          state.attemptsUsed=2;
+          const parts = cell.split(' ✗')[0].split(' → ');
+          state.attempts=parts;
+        } else if(cell.includes(' → ')){
+          // One attempt used, still going
+          state.attemptsUsed=1;
+          state.attempts=[cell.split(' → ')[0].trim()];
+        }
+      });
+      studentData.sessionCount = 2;
     }
-    activeClues = seededShuffle(pickedClues, rng).map((c,i)=>({...c, displayId:i+1}));
-    activeClues.forEach(c=>{answers[c.displayId]={attempts:[],correct:false,attemptsUsed:0,word:c.word,nearlyCorrect:false};});
 
-    const{g,placed}=buildGrid(rng);
-    grid=g;placedWords=placed;
+    btn.disabled=false;
+    btn.textContent='▶ Comenzar Actividad';
+
+    document.getElementById('disp-nombre').textContent=studentData.nombre;
+    document.getElementById('disp-dia').textContent=studentData.dia;
+    document.getElementById('disp-horario').textContent=studentData.horario;
+    document.getElementById('disp-sesion').textContent=studentData.sessionCount;
+    document.getElementById('score-box').style.display='none';
+    document.getElementById('submit-btn').disabled=false;
+    document.getElementById('submit-btn').textContent='✔ Entregar Actividad';
+
+    renderGrid();renderClues();updateProgress();
+    startTimer();
+    show('screen-puzzle');
+  };
+
+  // Try to fetch previous answers from Sheets
+  if(SCRIPT_URL){
+    const url = SCRIPT_URL.replace('/exec','') + '/exec?nombre='+encodeURIComponent(nombreCompleto)
+      +'&dia='+encodeURIComponent(dia)
+      +'&horario='+encodeURIComponent(horario)
+      +'&cursoCorto='+encodeURIComponent(CURSO_CORTO);
+    document.getElementById('reg-err').style.display='block';
+    document.getElementById('reg-err').style.color='#1a7a6e';
+    document.getElementById('reg-err').textContent='Verificando progreso anterior…';
+    fetch(url)
+      .then(r=>r.json())
+      .then(data=>{
+        document.getElementById('reg-err').style.display='none';
+        restoreAndLaunch(data.found ? data.answered : null);
+      })
+      .catch(err=>{
+        document.getElementById('reg-err').style.display='block';
+        document.getElementById('reg-err').style.color='#c0392b';
+        document.getElementById('reg-err').textContent='No se pudo verificar progreso: '+err.message+'. Iniciando desde cero.';
+        setTimeout(()=>{
+          document.getElementById('reg-err').style.display='none';
+          restoreAndLaunch(null);
+        }, 2000);
+      });
+  } else {
+    restoreAndLaunch(null);
   }
-
-  document.getElementById('disp-nombre').textContent=studentData.nombre;
-  document.getElementById('disp-dia').textContent=studentData.dia;
-  document.getElementById('disp-horario').textContent=studentData.horario;
-  document.getElementById('disp-sesion').textContent=studentData.sessionCount||1;
-  document.getElementById('score-box').style.display='none';
-  document.getElementById('submit-btn').disabled=false;
-  document.getElementById('submit-btn').textContent='✔ Entregar Actividad';
-
-  if(!grid.length){
-    const seed=hashStr(studentData.nombre.toLowerCase()+String(Math.floor(Date.now()/60000)));
-    const rng=makeRng(seed);
-    const{g,placed}=buildGrid(rng);
-    grid=g;placedWords=placed;
-  }
-
-  renderGrid();renderClues();updateProgress();
-  startTimer();
-  show('screen-puzzle');
 }
 
 function renderClues(){
@@ -578,6 +658,7 @@ function syncProgress(tipo='progreso', score=null){
     tipo,
     nombre:       studentData.nombre,
     sesion:       studentData.sessionCount || 1,
+    sessionId:    studentData.startedAt,
     dia:          studentData.dia,
     horario:      studentData.horario,
     curso:        CURSO,
